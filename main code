@@ -1,0 +1,100 @@
+! pip install python-telegram-bot
+
+import nltk
+import json
+import random
+from telegram import Update
+from telegram.ext import Updater, MessageHandler, Filters, CommandHandler, ConversationHandler
+
+BOT_KEY = "5488693066:AAE2tHU_SIwkjV9dUDYxMerKGAZl8hyU1gI"
+
+config_file = open("dialog.json","r")
+BOT_CONFIG = json.load(config_file)
+
+def filter(text):
+  text = text.lower()
+  alphabet = "абвгдеёжзийклмнопрстуфхцчшщъыьэюяabcdefghijklmnopqrstuvwxyz-"
+  result = [c for c in text if c in alphabet]
+  return ''.join(result)
+
+def match(text, example):
+  text =filter(text)
+  example = example. lower()
+  distance = nltk.edit_distance(text, example)/len(example)
+  return distance < 0.4
+
+def get_intent(text):
+  for intent in BOT_CONFIG["intents"]:
+    for example in BOT_CONFIG["intents"][intent]["examples"]:
+      if match(text, example):
+        return intent
+
+def get_example(text):
+  for intent in BOT_CONFIG["intents"]:
+    for example in BOT_CONFIG["intents"][intent]["examples"]:
+      if match(text, example):
+        return example
+
+def bot(text):
+  intent = get_intent(text)
+  if intent:
+    return random.choice(BOT_CONFIG["intents"][intent]["responses"])
+
+def nachalo(update: Update, context):
+  global name
+  update.message.reply_text("Как вас зовут?")
+  return 1
+
+def razmer(update: Update, context):
+  name = update.message.text
+  update.message.reply_text(f"Здравствуйте, {name}! Какую пиццу хотите  заказать: маленькую, среднюю или большую?")
+  return 2
+
+def oplata(update: Update, context):
+  global razm
+  question_razmer = update.message.text
+  razm = get_example(question_razmer)
+  update.message.reply_text("Чем будете платить? Карта или наличка?")
+  return 3
+
+def adress(update: Update, context):
+  global oplat
+  question_oplata = update.message.text
+  oplat = bot(question_oplata)
+  update.message.reply_text("Какой у вас адрес доставки?")
+  return 4
+
+def utochnenie(update: Update, context):
+  question_adress = update.message.text
+  update.message.reply_text(f"Вы хотите {razm} пиццу, способ оплаты - {oplat}, доставить по адресу: {question_adress}?")
+  return 5
+
+def end(update: Update, context):
+  question_utochnenie = update.message.text
+  correct = bot(question_utochnenie)
+  update.message.reply_text (correct)
+  return ConversationHandler.END
+
+def stop(update: Update, context):
+  update.message.reply_text("Заказ отменён（>﹏<） До свидания!")
+  return ConversationHandler.END
+
+conv_handler = ConversationHandler(
+  entry_points=[CommandHandler('start', nachalo)],
+  states={
+
+  1: [MessageHandler(Filters.text, razmer, pass_user_data=True)],
+  2: [MessageHandler(Filters.text, oplata, pass_user_data=True)],
+  3: [MessageHandler(Filters.text, adress, pass_user_data=True)],
+  4: [MessageHandler(Filters.text, utochnenie, pass_user_data=True)],
+  5: [MessageHandler(Filters.text, end, pass_user_data=True)]
+  },
+  fallbacks=[CommandHandler('stop', stop)]
+)
+
+upd = Updater(BOT_KEY)
+upd.dispatcher.add_handler(conv_handler)
+upd.dispatcher.add_handler(CommandHandler('start', nachalo))
+upd.dispatcher.add_handler(CommandHandler('stop', stop))
+upd.start_polling()
+upd.idle()
